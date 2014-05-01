@@ -1,6 +1,7 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/scatterlist.h>
+#include <linux/vmalloc.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
 
@@ -125,6 +126,7 @@ static int saa716x_dmabuf_sgalloc(struct saa716x_dmabuf *dmabuf, void *buf, int 
 			dprintk(SAA716x_ERROR, 1, "Failed to allocate memory for buffer");
 			return -ENOMEM;
 		}
+        memset(dmabuf->mem_virt_noalign, 0, (pages + 1) * SAA716x_PAGE_SIZE);
 
 		/* align memory to page */
 		dmabuf->mem_virt = (void *) PAGE_ALIGN (((unsigned long) dmabuf->mem_virt_noalign));
