@@ -13,7 +13,7 @@
 
  **Currently supported: 6680**
 
- **You can use it with kernel version 3.13.x and up.)**
+ **You can use it with kernel version 3.13.x and up.**
 
  **USAGE:**
 
