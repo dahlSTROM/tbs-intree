@@ -9,7 +9,7 @@
 **You should have received a copy of the GNU General Public License long with this program.  If not, see http://www.gnu.org/licenses/**
 
 
- **The purpose of this git repo is to compile TurboSight drivers directly into a Debian stock kernel, thus avoiding the use of a v4l tree and gain stability.**
+ **The purpose of this git repo is to compile TurboSight drivers directly into a Debian stock kernel, or a vanilla kernel, thus avoiding the use of a v4l tree and gain stability.**
 
  **Currently supported: 6680**
 
