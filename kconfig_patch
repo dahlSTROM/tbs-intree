@@ -1,5 +1,5 @@
---- drivers/media/dvb-frontends/Kconfig	2014-03-11 10:28:21.000000000 +0100
-+++ drivers/media/dvb-frontends/Kconfig	2014-03-11 10:33:09.332284272 +0100
+--- drivers/media/frontends/Kconfig	2014-03-11 10:28:21.000000000 +0100
++++ drivers/media/frontends/Kconfig	2014-03-11 10:33:09.332284272 +0100
 @@ -463,6 +463,13 @@
  	help
  	  A DVB-C tuner module. Say Y when you want to support this frontend.
