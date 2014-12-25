@@ -314,8 +314,6 @@ source \"drivers/media/common/saa716x/Kconfig\"" drivers/media/common/Kconfig
 patch -p0 < ../Makefile.patch
 patch -p0 < ../Kconfig.patch
 
-fi
-
 if [ "$OS" = Debian ] ; then
   echo -en "
 Going to configure your kernel.
