@@ -15,7 +15,7 @@
 
  **You can use it with kernel version 3.13.x and up.**
  
- **NOTE:** Kernels 3.1.8.x and up are currently unsupported due to a bug in tbs6680fe_driver.o_shipped.
+ **NOTE:** Kernels 3.18.x and up are currently unsupported due to a bug in the TBS binary file.
 
  **USAGE:**
 
