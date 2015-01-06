@@ -86,7 +86,11 @@ static int saa716x_dvb_stop_feed(struct dvb_demux_feed *dvbdmxfeed)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+int __devinit saa716x_dvb_init(struct saa716x_dev *saa716x)
+#else
 int saa716x_dvb_init(struct saa716x_dev *saa716x)
+#endif
 {
 	struct saa716x_adapter *saa716x_adap = saa716x->saa716x_adap;
 	struct saa716x_config *config = saa716x->config;
@@ -217,7 +221,11 @@ err0:
 }
 EXPORT_SYMBOL(saa716x_dvb_init);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+void __devexit saa716x_dvb_exit(struct saa716x_dev *saa716x)
+#else
 void saa716x_dvb_exit(struct saa716x_dev *saa716x)
+#endif
 {
 	struct saa716x_adapter *saa716x_adap = saa716x->saa716x_adap;
 	int i;

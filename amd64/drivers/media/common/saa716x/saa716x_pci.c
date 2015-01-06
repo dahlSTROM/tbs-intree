@@ -140,7 +140,11 @@ static void saa716x_free_irq(struct saa716x_dev *saa716x)
 	}
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+int __devinit saa716x_pci_init(struct saa716x_dev *saa716x)
+#else
 int saa716x_pci_init(struct saa716x_dev *saa716x)
+#endif
 {
 	struct pci_dev *pdev = saa716x->pdev;
 	int err = 0, ret = -ENODEV, i, pm_cap;
@@ -250,7 +254,11 @@ fail0:
 }
 EXPORT_SYMBOL_GPL(saa716x_pci_init);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+void __devexit saa716x_pci_exit(struct saa716x_dev *saa716x)
+#else
 void saa716x_pci_exit(struct saa716x_dev *saa716x)
+#endif
 {
 	struct pci_dev *pdev = saa716x->pdev;
 

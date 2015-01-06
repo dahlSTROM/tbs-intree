@@ -68,7 +68,11 @@ MODULE_PARM_DESC(enable_ir, "Enable IR support for TBS cards: default 1");
 
 #define DRIVER_NAME "SAA716x TBS"
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+static int __devinit saa716x_tbs_pci_probe(struct pci_dev *pdev, const struct pci_device_id *pci_id)
+#else
 static int saa716x_tbs_pci_probe(struct pci_dev *pdev, const struct pci_device_id *pci_id)
+#endif
 {
 	struct saa716x_dev *saa716x;
 	int err = 0;
@@ -171,7 +175,11 @@ fail0:
 	return err;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+static void __devexit saa716x_tbs_pci_remove(struct pci_dev *pdev)
+#else
 static void saa716x_tbs_pci_remove(struct pci_dev *pdev)
+#endif
 {
 	struct saa716x_dev *saa716x = pci_get_drvdata(pdev);
 	struct saa716x_adapter *saa716x_adap = saa716x->saa716x_adap;
@@ -383,12 +391,20 @@ static struct pci_driver saa716x_tbs_pci_driver = {
 	.remove		= saa716x_tbs_pci_remove,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+static int __devinit saa716x_tbs_init(void)
+#else
 static int saa716x_tbs_init(void)
+#endif
 {
 	return pci_register_driver(&saa716x_tbs_pci_driver);
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+static void __devexit saa716x_tbs_exit(void)
+#else
 static void saa716x_tbs_exit(void)
+#endif
 {
 	return pci_unregister_driver(&saa716x_tbs_pci_driver);
 }
