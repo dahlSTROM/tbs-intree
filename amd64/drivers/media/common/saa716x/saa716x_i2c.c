@@ -484,11 +484,7 @@ static const struct saa716x_i2cvec i2c_vec[] = {
 	}
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
-int __devinit saa716x_i2c_init(struct saa716x_dev *saa716x)
-#else
 int saa716x_i2c_init(struct saa716x_dev *saa716x)
-#endif
 {
 	struct pci_dev *pdev		= saa716x->pdev;
 	struct saa716x_i2c *i2c		= saa716x->i2c;
@@ -516,9 +512,6 @@ int saa716x_i2c_init(struct saa716x_dev *saa716x)
 			adapter->owner		= THIS_MODULE;
 			adapter->algo		= &saa716x_algo;
 			adapter->algo_data 	= saa716x;
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,35)
-			adapter->id		= I2C_HW_B_SAA716x;
-#endif
 			adapter->timeout	= 500; /* FIXME ! */
 			adapter->retries	= 3; /* FIXME ! */
 			adapter->dev.parent	= &pdev->dev;
@@ -548,11 +541,7 @@ exit:
 }
 EXPORT_SYMBOL_GPL(saa716x_i2c_init);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
-int __devexit saa716x_i2c_exit(struct saa716x_dev *saa716x)
-#else
 int saa716x_i2c_exit(struct saa716x_dev *saa716x)
-#endif
 {
 	struct saa716x_i2c *i2c		= saa716x->i2c;
 	struct i2c_adapter *adapter	= NULL;
