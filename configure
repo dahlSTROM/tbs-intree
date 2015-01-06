@@ -52,7 +52,7 @@ show_help(){
   echo "                        "
   echo " --sysupdate=<opt>      [yes] no: don't do apt-update and friends."
   echo "                        "
-  echo " --mutexpatch=<opt>          [no] yes: patch dvbdev.c for use with FFdecsawrapper"
+  echo " --dvbdev=<opt>     	[no] yes: patch dvbdev.c for use with FFdecsawrapper"
   echo "                        "
   exit 0
 }
@@ -61,7 +61,7 @@ vanilla_opt=""
 linuxnext_opt="no"
 update_opt="yes"
 sysupdate_opt="yes"
-mutexpatch_opt="no"
+dvbdev_opt="no"
 
 for opt do
   optval="${opt#*=}"
@@ -72,9 +72,7 @@ for opt do
   ;;
   --update=*) update_opt="$optval"
   ;;
-  --mutexpatch=*) mutexpatch_opt="$optval"
-  ;;
-  --dvb_c=*) dvbc_opt="$optval"
+  --dvbdev=*) dvbdev_opt="$optval"
   ;;
   --help) show_help
   ;;
@@ -233,14 +231,14 @@ fi
 # Check for minimum supported kernel version to build with
 # (should be 3.18-rc1 or up)
 #
-MINVERSION="18"
+MINVERSION="13"
 VERSION=$( echo "$vanilla_opt" | cut -d'.' -f2 | cut -d'-' -f1 )
 
 if [ "x$vanilla_opt" != "x" ]; then
   if [ "$VERSION" -lt "$MINVERSION" ]; then
     echo -en "
 \E[1;33;44m
-This TBS6680 driver is supported intree as of 3.18.x kernels.
+This TBS6680 driver is supported intree as of 3.13.x kernels.
 
 You requested a build with a $vanilla_opt kernel.
 
@@ -311,12 +309,13 @@ fi
 cp -f ../amd64/drivers/media/dvb-frontends/* drivers/media/dvb-frontends/
 cp -ar ../amd64/drivers/media/common/saa716x drivers/media/common
 sed -i "s/obj-y += b2c2\/ saa7146\/ siano\//obj-y += b2c2\/ saa7146\/ siano\/ saa716x\//" drivers/media/common/Makefile
-sed -i "$ a\source \"drivers/media/common/saa716x/Kconfig\"" drivers/media/common/Kconfig
+sed -i "$ a\
+source \"drivers/media/common/saa716x/Kconfig\"" drivers/media/common/Kconfig
 patch -p0 < ../Makefile.patch
 patch -p0 < ../Kconfig.patch
 
 # Patch it for use with FFdecsawrapper
-if [ "x$mutexpatch_opt" = "xyes" ]; then
+if [ "x$dvbdev_opt" = "xyes" ]; then
   patch -p0 < ../dvb-core.patch
 fi
 
