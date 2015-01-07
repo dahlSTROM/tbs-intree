@@ -72,6 +72,8 @@ for opt do
   ;;
   --update=*) update_opt="$optval"
   ;;
+  --sysupdate=*) sysupdate_opt="$optval"
+  ;;
   --dvbdev=*) dvbdev_opt="$optval"
   ;;
   --help) show_help
@@ -231,14 +233,14 @@ fi
 # Check for minimum supported kernel version to build with
 # (should be 3.18-rc1 or up)
 #
-MINVERSION="13"
+MINVERSION="18"
 VERSION=$( echo "$vanilla_opt" | cut -d'.' -f2 | cut -d'-' -f1 )
 
 if [ "x$vanilla_opt" != "x" ]; then
   if [ "$VERSION" -lt "$MINVERSION" ]; then
     echo -en "
 \E[1;33;44m
-This TBS6680 driver is supported intree as of 3.13.x kernels.
+This TBS6680 driver is supported intree as of 3.18.x kernels.
 
 You requested a build with a $vanilla_opt kernel.
 

@@ -13,11 +13,10 @@
 
  **Currently supported: 6680**
 
- **You can use it with kernel version 3.13.x and up.**
+ **You can use it with kernel version 3.18.x and up.**
  
- **NOTE:** Kernels 3.18.x and up are currently unsupported due to a bug in the TBS binary file.
 
  **USAGE:**
 
- - `Click here for a HOW-TO. <https://github.com/bas-t/tbs-intree/wiki>`_
+ - `Click here for a HOW-TO. <https://github.com/dahlSTROM/tbs6680-intree/wiki>`_
 
