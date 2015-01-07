@@ -306,6 +306,11 @@ else
   tar -xJf linux-$vanilla_opt.tar.xz && cd linux*
 fi
 
+# Patch it for use with FFdecsawrapper
+if [ "x$dvbdev_opt" = "xyes" ]; then
+  patch -p0 < ../dvb-core.patch
+fi
+
 # Add TBS drivers to the kernel
 
 cp -f ../amd64/drivers/media/dvb-frontends/* drivers/media/dvb-frontends/
@@ -316,19 +321,11 @@ source \"drivers/media/common/saa716x/Kconfig\"" drivers/media/common/Kconfig
 patch -p0 < ../Makefile.patch
 patch -p0 < ../Kconfig.patch
 
-# Patch it for use with FFdecsawrapper
-if [ "x$dvbdev_opt" = "xyes" ]; then
-  patch -p0 < ../dvb-core.patch
-fi
-
-
   echo -en "
 Going to configure your kernel.
 
 "
-
     make oldconfig
-
 
     # Change the max num of DVB adapters
     echo -en "
