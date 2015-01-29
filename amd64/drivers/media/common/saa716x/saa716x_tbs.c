@@ -35,6 +35,7 @@
 #include "saa716x_priv.h"
 
 #include "saa716x_input.h"
+#include <media/rc-core.h>
 
 #include "saa716x_tbs.h"
 #include "tbsctrl.h"
@@ -145,10 +146,10 @@ static int saa716x_tbs_pci_probe(struct pci_dev *pdev, const struct pci_device_i
 		SAA716x_EPWR(MSI, MSI_CONFIG37, data);
 		SAA716x_EPWR(MSI, MSI_INT_ENA_SET_H, MSI_INT_EXTINT_4);
 
-		saa716x_gpio_set_input(saa716x, 4);
+		saa716x_gpio_set_input(saa716x, saa716x->config->rc_gpio_in);
 		msleep(1);
 	
-		saa716x_input_init(saa716x);
+		saa716x_input_init(saa716x,saa716x->config->rc_gpio_in, saa716x->config->rc_map_name);
 	}
 
 	err = saa716x_dvb_init(saa716x);
@@ -366,7 +367,9 @@ static struct saa716x_config saa716x_tbs6680_config = {
 			/* adapter 1 */
 			.ts_port = 3
 		},
-	}
+	},
+	.rc_gpio_in = 4,
+	.rc_map_name = RC_MAP_TBS_NEC
 };
 
 static struct pci_device_id saa716x_tbs_pci_table[] = {
