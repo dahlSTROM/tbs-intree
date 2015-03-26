@@ -41,7 +41,7 @@ show_help(){
   echo " --help                 Print this message"
   echo "                        "
   echo " --vanilla=<bool>       Set vanilla kernel to use,"
-  echo "                        like 3.19-rc1"
+  echo "                        like 4.0-rc5."
   echo "                        "
   echo " --linux_next=<opt>     [no] yes: compile a kernel from"
   echo "                        current linux-next git repo."
@@ -50,18 +50,30 @@ show_help(){
   echo " --update=<opt>         [yes] no: don't clean local clone and"
   echo "                        don't pull in any updates."
   echo "                        "
-  echo " --sysupdate=<opt>      [yes] no: don't do apt-update and friends."
+  echo " --sysupdate=<opt>      [yes] no: don't do apt-get update and friends."
   echo "                        "
-  echo " --dvbdev=<opt>     	[no] yes: patch dvbdev.c for use with FFdecsawrapper"
+  echo " --builddep=<opt>       [yes] no: don't apt-get install build deps."
+  echo "                        "
+  echo " --dvb_core=<opt>       [no] yes: patch dvbdev.c for FFdecsawrapper"
+  echo "                        "
+  echo " --adapters=<opt>       [16] set max num of adapters."
+  echo "                        "
+  echo " --debug=<opt>          [no] yes: print output of compiling the kernel"
+  echo "                        to ../build.log except for errors/warnings"
   echo "                        "
   exit 0
 }
+
+# Set defaults
 
 vanilla_opt=""
 linuxnext_opt="no"
 update_opt="yes"
 sysupdate_opt="yes"
-dvbdev_opt="no"
+builddep_opt="yes"
+dvbcore_opt="no"
+adapters_opt="16"
+debug_opt="no"
 
 for opt do
   optval="${opt#*=}"
@@ -74,7 +86,13 @@ for opt do
   ;;
   --sysupdate=*) sysupdate_opt="$optval"
   ;;
-  --dvbdev=*) dvbdev_opt="$optval"
+  --builddep=*) builddep_opt="$optval"
+  ;;
+  --dvb_core=*) dvbcore_opt="$optval"
+  ;;
+  --adapters=*) adapters_opt="$optval"
+  ;;
+  --debug=*) debug_opt="$optval"
   ;;
   --help) show_help
   ;;
@@ -83,56 +101,6 @@ for opt do
   ;;
   esac
 done
-
-OS=$( lsb_release -si )
-RELEASE=$( lsb_release -sc )
-
-if ! [ "$OS" = Debian -o "$OS" = Ubuntu ] ; then
-  echo -en "
-\E[1;33;44m
-Your operating system is not supported.
-
-It should be Debian or Ubuntu.
-
-Aborting...
-\E[0m
-
-"
-  exit 0
-fi
-
-# Make sure that we are running as root
-
-if ! echo "$(whoami)" | grep "root" > /dev/null 2>&1; then
-  if [ "$OS" = Debian ]; then
-    echo -en "
-\E[1;33;44m
-You should run as root.
-
-Aborting...
-\E[0m
-
-"
-    exit 0
-  else
-    echo -en "
-\E[1;33;44m
-You should run as root.
-
-Do \"sudo su\" and run me again.
-
-Aborting...
-\E[0m
-
-"
-    exit 0
-  fi
-fi
-
-# Install dependencies for building the kernel
-apt-get build-dep linux --no-install-recommends -y || die "Error installing \"build-dep linux\""
-
-apt-get install kernel-package bin86 devscripts binutils-dev crash libncurses5-dev libnuma-dev libperl-dev makedumpfile libelf-dev python-six initramfs-tools git-core libfile-fcntllock-perl --no-install-recommends -y || die "Error installing build dependencies"
 
 # Check git status
 if [ "x$update_opt" = "xyes" ]; then
@@ -153,6 +121,8 @@ Aborting...
 
 ####################################
 \E[0m
+
+
 "
     exit 1
   fi
@@ -193,6 +163,8 @@ Aborting...
 
 ####################################
 \E[0m
+
+
 "
       exit 1
     else
@@ -208,6 +180,8 @@ Arrow up and enter will get you there.
 
 ####################################################
 \E[0m
+
+
 "
       exit 0
     fi
@@ -224,21 +198,162 @@ Aborting...
 
 ######################################
 \E[0m
+
+
 "
     exit 1
   fi    
 fi
 
-#
-# Check for minimum supported kernel version to build with
-# (should be 3.18-rc1 or up)
-#
-MINVERSION="18"
+OS=$( lsb_release -si )
+
+
+RELEASE=$( lsb_release -sc )
+
+if ! [ "$OS" = Debian -o "$OS" = Ubuntu ] ; then
+  echo -en "
+\E[1;33;44m
+Your operating system is not supported.
+
+It should be Debian or Ubuntu.
+
+Aborting...
+\E[0m
+
+"
+  exit 0
+fi
+
+# Make sure that we are running as root
+
+if ! echo "$(whoami)" | grep "root" > /dev/null 2>&1; then
+  echo -en "
+\E[1;33;44m
+You should run as root.
+
+Aborting...
+\E[0m
+
+"
+  exit 0
+fi
+
+if [ "x$builddep_opt" = "xyes" ]; then
+# Install dependencies for building the kernel
+  apt-get build-dep linux --no-install-recommends -y || die "Error installing \"build-dep linux\""
+
+  if ! dpkg-query -l fakeroot | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency fakeroot, marking for installation.
+"
+    apt-get install fakeroot --no-install-recommends -y || die "Error installing dependency fakeroot"
+  fi
+
+  if ! dpkg-query -l kernel-package | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency kernel-package, marking for installation.
+"
+    apt-get install kernel-package --no-install-recommends -y || die "Error installing dependency kernel-package"
+  fi
+
+  if ! dpkg-query -l bin86 | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency bin86, marking for installation.
+"
+    apt-get install bin86 --no-install-recommends -y || die "Error installing dependency bin86"
+  fi
+
+  if ! dpkg-query -l devscripts | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency devscripts, marking for installation.
+"
+    apt-get install devscripts --no-install-recommends -y || die "Error installing dependency devscripts"
+  fi
+
+  if ! dpkg-query -l binutils-dev | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency binutils-dev, marking for installation.
+"
+    apt-get install binutils-dev --no-install-recommends -y || die "Error installing dependency binutils-dev"
+  fi
+
+  if ! dpkg-query -l crash | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency crash, marking for installation.
+"
+    apt-get install crash --no-install-recommends -y || die "Error installing dependency crash"
+  fi
+
+  if ! dpkg-query -l libncurses5-dev | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency libncurses5-dev, marking for installation.
+"
+    apt-get install libncurses5-dev --no-install-recommends -y || die "Error installing dependency libncurses5-dev"
+  fi
+
+  if ! dpkg-query -l libnuma-dev | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency libnuma-dev, marking for installation.
+"
+    apt-get install libnuma-dev --no-install-recommends -y || die "Error installing dependency libnuma-dev"
+  fi
+
+  if ! dpkg-query -l libperl-dev | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency libperl-dev, marking for installation.
+"
+    apt-get install libperl-dev --no-install-recommends -y || die "Error installing dependency libperl-dev"
+  fi
+
+  if ! dpkg-query -l makedumpfile | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency makedumpfile, marking for installation.
+"
+    apt-get install makedumpfile --no-install-recommends -y || die "Error installing dependency makedumpfile"
+  fi
+
+  if ! dpkg-query -l libelf-dev | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency libelf-dev, marking for installation.
+"
+    apt-get install libelf-dev --no-install-recommends -y || die "Error installing dependency libelf-dev"
+  fi
+
+  if ! dpkg-query -l python-six | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency python-six, marking for installation.
+"
+    apt-get install python-six --no-install-recommends -y || die "Error installing dependency python-six"
+  fi
+
+  if ! dpkg-query -l initramfs-tools | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency initramfs-tools, marking for installation.
+"
+    apt-get install initramfs-tools --no-install-recommends -y || die "Error installing dependency initramfs-tools"
+  fi
+
+  if ! dpkg-query -l libfile-fcntllock-perl | grep "ii" > /dev/null 2>&1; then
+    echo "
+Missing dependency libfile-fcntllock-perl, marking for installation.
+"
+    apt-get install libfile-fcntllock-perl --no-install-recommends -y || die "Error installing dependency libfile-fcntllock-perl"
+  fi
+fi
+
+MAJOR=$( echo "$vanilla_opt" | cut -d'.' -f1 )
 VERSION=$( echo "$vanilla_opt" | cut -d'.' -f2 | cut -d'-' -f1 )
 
-if [ "x$vanilla_opt" != "x" ]; then
-  if [ "$VERSION" -lt "$MINVERSION" ]; then
-    echo -en "
+#
+# Check for minimum supported kernel version to build with
+# (should be 3.18 or up)
+#
+MINVERSION="18"
+  if [ "x$vanilla_opt" != "x" ]; then
+    if [ "$MAJOR" -lt "4" ]; then
+      if ! [ "$VERSION" -eq "10" ]; then
+        if [ "$VERSION" -lt "$MINVERSION" ]; then
+          echo -en "
 \E[1;33;44m
 This TBS6680 driver is supported intree as of 3.18.x kernels.
 
@@ -248,10 +363,12 @@ Aborting...
 \E[0m
 
 "
-    exit 0
-  fi
-elif [ "x$linuxnext_opt" = "x" ]; then
-  echo -en "
+          exit 0
+        fi
+      fi
+    fi
+  elif [ "x$linuxnext_opt" = "x" ]; then
+    echo -en "
 \E[1;33;44m
 You did not enter a kernel version to use.
 
@@ -261,31 +378,32 @@ Aborting...
 \E[0m
 
 "
-  sleep 5
-  ./configure --help
-  exit 0
+    sleep 5
+    ./configure --help
+    exit 0
+  fi
+
+# First get some info on what we are running
+
+if [ -f /usr/bin/lsb_release ]; then
+  OS=$( lsb_release -si )
+  RELEASE=$( lsb_release -sc )
 fi
-
-# Get kernel version numbers
-
-SHORT_KERNEL=$( echo `uname -r` | grep -o '[[:digit:]]\+\.[[:digit:]]\+' )
-FIRST_DIGIT=$( echo `uname -r` | grep -o '[[:digit:]]\+' | head -n1 )
-SECOND_DIGIT=$( echo `uname -r` | grep -o '[[:digit:]]\+' | head -n2 | awk 'NR==2' )
-PATCHLEVEL=$( echo `uname -r` | grep -o '[[:digit:]]\+' | head -n3 | awk 'NR==3' )
 
 # Get the system up-to-date
 if [ "x$sysupdate_opt" = "xyes" ]; then
-  apt-get update && apt-get dist-upgrade -y || die "Error(s) while updating your system"
+  apt-get update || die "Error(s) while updating your systems package list"
+  apt-get dist-upgrade -y || die "Error(s) while updating your system"
 fi
 
 # Get the linux source
-if [ "x$linuxnext_opt" = "xyes" ]; then
-  git clone --depth=1 git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git ./linux
-elif ! echo "$vanilla_opt" | grep "rc" > /dev/null 2>&1; then 
-  wget https://www.kernel.org/pub/linux/kernel/v3.x/linux-$vanilla_opt.tar.xz
-else
-  wget https://www.kernel.org/pub/linux/kernel/v3.x/testing/linux-$vanilla_opt.tar.xz
-fi
+  if [ "x$linuxnext_opt" = "xyes" ]; then
+    git clone --depth=1 git://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git ./linux || die "Error(s) while fetching Linux source"
+  elif ! echo "$vanilla_opt" | grep "rc" > /dev/null 2>&1; then
+    wget https://www.kernel.org/pub/linux/kernel/v$MAJOR.x/linux-$vanilla_opt.tar.xz || die "Error(s) while fetching Linux source"
+  else
+    wget https://www.kernel.org/pub/linux/kernel/v4.x/testing/linux-$vanilla_opt.tar.xz || die "Error(s) while fetching Linux source"
+  fi
 
 if ! [ "$?" -eq 0 ]; then
   echo -en "
@@ -307,12 +425,16 @@ else
 fi
 
 # Patch it for use with FFdecsawrapper
-if [ "x$dvbdev_opt" = "xyes" ]; then
+if [ "x$dvbcore_opt" = "xyes" ]; then
   patch -p0 < ../dvb-core.patch
 fi
 
-# Add TBS drivers to the kernel
+# Get kernel version numbers
 
+FIRST_DIGIT=$( echo `pwd` | grep -o '[[:digit:]]\+' | head -n2 | awk 'NR==2' )
+SECOND_DIGIT=$( echo `pwd` | grep -o '[[:digit:]]\+' | head -n3 | awk 'NR==3' )
+
+# Add TBS drivers to the kernel
 cp -f ../amd64/drivers/media/dvb-frontends/* drivers/media/dvb-frontends/
 cp -ar ../amd64/drivers/media/common/saa716x drivers/media/common
 sed -i "s/obj-y += b2c2\/ saa7146\/ siano\//obj-y += b2c2\/ saa7146\/ siano\/ saa716x\//" drivers/media/common/Makefile
@@ -321,41 +443,87 @@ source \"drivers/media/common/saa716x/Kconfig\"" drivers/media/common/Kconfig
 patch -p0 < ../Makefile.patch
 patch -p0 < ../Kconfig.patch
 
-  echo -en "
-Going to configure your kernel.
+echo -en "
+\E[1;33;44m
+Configuring your kernel using 'make oldconfig'.
+\E[0m
 
 "
     make oldconfig
 
-    # Change the max num of DVB adapters
-    echo -en "
+  # Ask about 'make menuconfig'
+  echo -en "
 \E[1;33;44m
-If you are going to use >4 dvb adapters with
-FFdecsawrapper, make sure your kernel supports it.
-\E[0m
-
-Want to use 'make menuconfig for it?
-
+Do you want to run 'make menuconfig'?
 "
-    confirmyes "Yes, use it. [Y/n]"
+    confirmyes "Yes, run it. [Y/n]"
     if [ "$?" -eq 0 ]; then
       make menuconfig
     fi
 
-  make-kpkg --rootcmd fakeroot clean
+  # Change the max num of DVB adapters
+  ADAPTERS=$( cat .config | grep "CONFIG_DVB_MAX_ADAPTERS" | grep -o '[[:digit:]]\+' )
+  if ! [ "$ADAPTERS" = "$adapters_opt" ]; then
+    sed -i "s/CONFIG_DVB_MAX_ADAPTERS=$ADAPTERS/CONFIG_DVB_MAX_ADAPTERS=$adapters_opt/" .config
+  fi
+
   export CONCURRENCY_LEVEL=3
-  make-kpkg --rootcmd fakeroot --initrd kernel_image > ../build.log
-  if [ "$?" -eq 0 ]; then
-    cd ..
-    dpkg -i *.deb
+  echo "
+"
+  if [ "x$debug_opt" = "xyes" ]; then
+    echo -en "
+\E[1;33;44m
+
+Compiling your kernel. Only warnings and errors are displayed
+
+in your terminal. The idea is to get some useful debug output.
+
+Please be (very) patient. When done, you'll be informed of the result.
+
+\E[0m
+
+"
+    sleep 5
+    make-kpkg --rootcmd fakeroot clean
+    make-kpkg --rootcmd fakeroot --initrd kernel_image > ../build.log
   else
     echo -en "
 \E[1;33;44m
-Your kernel did  not compile as it should.
+
+Compiling your kernel. Please be (very) patient.
+
+\E[0m
+
+"
+    sleep 5
+    make-kpkg --rootcmd fakeroot clean
+    make-kpkg --rootcmd fakeroot --initrd kernel_image
+  fi
+
+if [ "$?" -eq 0 ]; then
+  echo -en "
+\E[1;33;44m
+RESULT:
+
+Going to install your new kernel now.
+\E[0m
+
+"
+  sleep 5
+  cd ..
+  rm -f xen*
+  dpkg -i *.deb
+  apt-get -f install -y
+else
+  echo -en "
+\E[1;33;44m
+RESULT:
+
+Your kernel did not compile as it should.
 \E[0m
 
 Aborting...
 
 "
-    exit 1
-  fi
+  exit 1
+fi
