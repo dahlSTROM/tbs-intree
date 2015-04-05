@@ -46,6 +46,7 @@ show_help(){
   echo " --linux_next=<opt>     [no] yes: compile a kernel from"
   echo "                        current linux-next git repo."
   echo "                        Using linux-next disables --vanilla"
+  echo "                        and sets --test=yes"
   echo "                        "
   echo " --update=<opt>         [yes] no: don't clean local clone and"
   echo "                        don't pull in any updates."
@@ -60,6 +61,8 @@ show_help(){
   echo "                        "
   echo " --debug=<opt>          [no] yes: print output of compiling the kernel"
   echo "                        to ../build.log except for errors/warnings"
+  echo "                        "  
+  echo " --test=<opt>           [no] yes: confirm every step."
   echo "                        "
   exit 0
 }
@@ -74,13 +77,16 @@ builddep_opt="yes"
 dvbcore_opt="no"
 adapters_opt="16"
 debug_opt="no"
+test_opt="no"
 
 for opt do
   optval="${opt#*=}"
   case "$opt" in
   --vanilla=*) vanilla_opt="$optval"
   ;;
-  --linux_next=*) linuxnext_opt="$optval"; vanilla_opt=""
+  --test=*) test_opt="$optval"
+  ;;
+  --linux_next=*) linuxnext_opt="$optval"; vanilla_opt=""; test_opt="yes"
   ;;
   --update=*) update_opt="$optval"
   ;;
@@ -344,6 +350,11 @@ fi
 MAJOR=$( echo "$vanilla_opt" | cut -d'.' -f1 )
 VERSION=$( echo "$vanilla_opt" | cut -d'.' -f2 | cut -d'-' -f1 )
 
+if [ "x$linuxnext_opt" = "xyes" ]; then
+MAJOR="4"
+VERSION="0"
+fi
+
 #
 # Check for minimum supported kernel version to build with
 # (should be 3.18 or up)
@@ -418,10 +429,22 @@ Aborting...
   exit 1
 fi
 
+if [ "x$test_opt" = "xyes" ]; then
+  confirmyes "Source is downloaded. Proceed? [Y/n]"
+  if [ "$?" -eq 1 ]; then
+    echo "
+You have chosen not to proceed.
+Aborting...
+"
+    exit 0
+  fi
+fi
+
 if [ "x$linuxnext_opt" = "xyes" ]; then
   cd linux
 else
-  tar -xJf linux-$vanilla_opt.tar.xz && cd linux*
+  tar -xJf linux-$vanilla_opt.tar.xz
+  cd linux-$vanilla_opt
 fi
 
 # Patch it for use with FFdecsawrapper
@@ -442,6 +465,17 @@ sed -i "$ a\
 source \"drivers/media/common/saa716x/Kconfig\"" drivers/media/common/Kconfig
 patch -p0 < ../Makefile.patch
 patch -p0 < ../Kconfig.patch
+
+if [ "x$test_opt" = "xyes" ]; then
+  confirmyes "Source is patched. Proceed? [Y/n]"
+  if [ "$?" -eq 1 ]; then
+    echo "
+You have chosen not to proceed.
+Aborting...
+"
+    exit 0
+  fi
+fi
 
 echo -en "
 \E[1;33;44m
@@ -467,6 +501,17 @@ Do you want to run 'make menuconfig'?
     sed -i "s/CONFIG_DVB_MAX_ADAPTERS=$ADAPTERS/CONFIG_DVB_MAX_ADAPTERS=$adapters_opt/" .config
   fi
 
+  if [ "x$test_opt" = "xyes" ]; then
+    confirmyes "Source is configured. Compile now? [Y/n]"
+    if [ "$?" -eq 1 ]; then
+      echo "
+You have chosen not to proceed.
+Aborting...
+"
+      exit 0
+    fi
+  fi
+
   export CONCURRENCY_LEVEL=3
   echo "
 "
@@ -485,7 +530,7 @@ Please be (very) patient. When done, you'll be informed of the result.
 "
     sleep 5
     make-kpkg --rootcmd fakeroot clean
-    make-kpkg --rootcmd fakeroot --initrd kernel_image > ../build.log
+    make-kpkg --rootcmd fakeroot --initrd kernel_image kernel_headers > ../build.log
   else
     echo -en "
 \E[1;33;44m
@@ -497,10 +542,21 @@ Compiling your kernel. Please be (very) patient.
 "
     sleep 5
     make-kpkg --rootcmd fakeroot clean
-    make-kpkg --rootcmd fakeroot --initrd kernel_image
+    make-kpkg --rootcmd fakeroot --initrd kernel_image kernel_headers
   fi
 
 if [ "$?" -eq 0 ]; then
+
+  if [ "x$test_opt" = "xyes" ]; then
+    confirmyes "Kernel is compiled. Install it? [Y/n]"
+    if [ "$?" -eq 1 ]; then
+      echo "
+You have chosen not to proceed.
+Aborting...
+"
+      exit 0
+    fi
+  fi
   echo -en "
 \E[1;33;44m
 RESULT:
@@ -514,6 +570,38 @@ Going to install your new kernel now.
   rm -f xen*
   dpkg -i *.deb
   apt-get -f install -y
+
+  if [ "x$vanilla_opt" != "x" ]; then
+    if [ "x$test_opt" = "xyes" ]; then
+      confirmyes "Kernel is installed. Link the headers? [Y/n]"
+      if [ "$?" -eq 1 ]; then
+        echo "
+You have chosen not to proceed.
+Aborting...
+"
+        exit 0
+      fi
+    fi
+    echo -en "
+\E[1;33;44m
+Going to link the headers now.
+\E[0m
+"
+    sleep 5
+    if echo "$vanilla_opt" | grep "rc" > /dev/null 2>&1; then
+      BUILDLINK="/lib/modules/$(ls -d1 */ | grep "linux" | sed 's/linux-//' | sed 's/-rc/.0-rc/')build"
+      SOURCELINK="/lib/modules/$(ls -d1 */ | grep "linux" | sed 's/linux-//' | sed 's/-rc/.0-rc/')source"
+      HEADERSDIR="/usr/src/$(ls -d1 */ | grep "linux" | sed 's/linux-/linux-headers-/' | sed 's/\///' | sed 's/-rc/.0-rc/')"
+    else
+      BUILDLINK="/lib/modules/$(ls -d1 */ | grep "linux" | sed 's/linux-//')build"
+      SOURCELINK="/lib/modules/$(ls -d1 */ | grep "linux" | sed 's/linux-//')source"
+      HEADERSDIR="/usr/src/$(ls -d1 */ | grep "linux" | sed 's/linux-/linux-headers-/' | sed 's/\///')"
+    fi
+    rm -f $BUILDLINK
+    rm -f $SOURCELINK
+    ln -s $HEADERSDIR $SOURCELINK
+    ln -s $HEADERSDIR $BUILDLINK
+  fi
 else
   echo -en "
 \E[1;33;44m
