@@ -1,7 +1,6 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/scatterlist.h>
-#include <linux/vmalloc.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
 
