@@ -13,6 +13,8 @@
 #include "saa716x_priv.h"
 
 
+#define SAA716X_TS_DMA_BUF_SIZE		(16 * SAA716x_PAGE_SIZE)
+
 DVB_DEFINE_MOD_OPT_ADAPTER_NR(adapter_nr);
 
 
@@ -24,7 +26,7 @@ void saa716x_dma_start(struct saa716x_dev *saa716x, u8 adapter)
 
 	params.bits		= 8;
 	params.samples		= 188;
-	params.lines		= 348;
+	params.lines		= SAA716X_TS_DMA_BUF_SIZE / 188;
 	params.pitch		= 188;
 	params.offset		= 0;
 	params.page_tables	= 0;
@@ -58,7 +60,6 @@ static int saa716x_dvb_start_feed(struct dvb_demux_feed *dvbdmxfeed)
 
 	if (saa716x_adap->feeds == 1) {
 		dprintk(SAA716x_DEBUG, 1, "SAA716x start feed & dma");
-		/* printk("saa716x start feed & dma\n"); */
 		saa716x_dma_start(saa716x, saa716x_adap->count);
 	}
 
@@ -79,7 +80,6 @@ static int saa716x_dvb_stop_feed(struct dvb_demux_feed *dvbdmxfeed)
 	saa716x_adap->feeds--;
 	if (saa716x_adap->feeds == 0) {
 		dprintk(SAA716x_DEBUG, 1, "saa716x stop feed and dma");
-		/* printk("saa716x stop feed and dma\n"); */
 		saa716x_dma_stop(saa716x, saa716x_adap->count);
 	}
 
@@ -191,7 +191,9 @@ int saa716x_dvb_init(struct saa716x_dev *saa716x)
 			dprintk(SAA716x_ERROR, 1, "Frontend attach = NULL");
 		}
 
-		saa716x_fgpi_init(saa716x, config->adap_config[i].ts_port);
+		saa716x_fgpi_init(saa716x, config->adap_config[i].ts_port,
+				  SAA716X_TS_DMA_BUF_SIZE,
+				  config->adap_config[i].worker);
 
 		saa716x_adap++;
 	}
@@ -220,11 +222,26 @@ EXPORT_SYMBOL(saa716x_dvb_init);
 void saa716x_dvb_exit(struct saa716x_dev *saa716x)
 {
 	struct saa716x_adapter *saa716x_adap = saa716x->saa716x_adap;
+	struct i2c_client *client;
 	int i;
 
 	for (i = 0; i < saa716x->config->adapters; i++) {
 
 		saa716x_fgpi_exit(saa716x, saa716x->config->adap_config[i].ts_port);
+
+		/* remove I2C tuner */
+		client = saa716x_adap->i2c_client_tuner;
+		if (client) {
+			module_put(client->dev.driver->owner);
+			i2c_unregister_device(client);
+		}
+
+		/* remove I2C demod */
+		client = saa716x_adap->i2c_client_demod;
+		if (client) {
+			module_put(client->dev.driver->owner);
+			i2c_unregister_device(client);
+		}
 
 		if (saa716x_adap->fe) {
 			dvb_unregister_frontend(saa716x_adap->fe);

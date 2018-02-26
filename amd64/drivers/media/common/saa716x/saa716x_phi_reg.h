@@ -56,8 +56,6 @@
 
 /* -------------- PHI_1 Registers -------------- */
 
-#define	PHI_1				0x00020000
-
 #define PHI_1_MODE			0x00004
 #define PHI_1_0_CONFIG			0x00018
 #define PHI_1_1_CONFIG			0x0001c
@@ -71,30 +69,26 @@
 #define PHI_1_0_RW_0			0x00000
 #define PHI_1_0_RW_16383		0x0fffc
 
-#define PHI_1_1_RW_0			0x1000
-#define PHI_1_1_RW_16383		0x1ffc
+#define PHI_1_1_RW_0			0x10000
+#define PHI_1_1_RW_16383		0x1fffc
 
-#define PHI_1_2_RW_0			0x2000
-#define PHI_1_2_RW_16383		0x2ffc
+#define PHI_1_2_RW_0			0x20000
+#define PHI_1_2_RW_16383		0x2fffc
 
-#define PHI_1_3_RW_0			0x3000
-#define PHI_1_3_RW_16383		0x3ffc
+#define PHI_1_3_RW_0			0x30000
+#define PHI_1_3_RW_16383		0x3fffc
 
-#define PHI_1_4_RW_0			0x4000
-#define PHI_1_4_RW_16383		0x4ffc
+#define PHI_1_4_RW_0			0x40000
+#define PHI_1_4_RW_16383		0x4fffc
 
-#define PHI_1_5_RW_0			0x5000
-#define PHI_1_5_RW_16383		0x5ffc
+#define PHI_1_5_RW_0			0x50000
+#define PHI_1_5_RW_16383		0x5fffc
 
-#define PHI_1_6_RW_0			0x6000
-#define PHI_1_6_RW_16383		0x6ffc
+#define PHI_1_6_RW_0			0x60000
+#define PHI_1_6_RW_16383		0x6fffc
 
-#define PHI_1_7_RW_0			0x7000
-#define PHI_1_7_RW_16383		0x7ffc
-
-
-/* BAR = 20 bits */
-/* -------------- PHI1 Registers -------------- */
+#define PHI_1_7_RW_0			0x70000
+#define PHI_1_7_RW_16383		0x7fffc
 
 
 #endif /* __SAA716x_PHI_REG_H */

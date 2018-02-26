@@ -188,18 +188,17 @@ int saa716x_set_clk_internal(struct saa716x_dev *saa716x, u32 port)
 		cgu->clk_int_port[PORT_FGPI3] = 1;
 		cgu->clk_int_port[PORT_AI0] = 1;
 		cgu->clk_int_port[PORT_AI1] = 1;
-
-		delay = 0;
 		break;
 
 	default:
 		dprintk(SAA716x_ERROR, 1, "Unknown port <%02x>", port);
+		delay = 0;
 		break;
 	}
 
 	/* wait for PLL */
 	if (delay)
-		msleep(400);
+		msleep(1);
 
 	return 0;
 }
@@ -309,7 +308,7 @@ int saa716x_set_clk_external(struct saa716x_dev *saa716x, u32 port)
 	}
 
 	if (delay)
-		msleep(400);
+		msleep(1);
 
 	return 0;
 }
@@ -484,15 +483,15 @@ int saa716x_set_clk(struct saa716x_dev *saa716x,
 	add = M_tmp - N_tmp;
 	lsb = 4; /* run */
 
-	if (((10 * N) / M) < 5)
+	if (((10 * N) / M) <= 5)
 		lsb |= 1; /* stretch */
 
 	/* store new divider */
 	cgu->clk_curr_div[domain] = sub & 0xff;
 	cgu->clk_curr_div[domain] <<= 8;
-	cgu->clk_curr_div[domain] = add & 0xff;
+	cgu->clk_curr_div[domain] |= add & 0xff;
 	cgu->clk_curr_div[domain] <<= 3;
-	cgu->clk_curr_div[domain]  |= lsb;
+	cgu->clk_curr_div[domain] |= lsb;
 
 	dprintk(SAA716x_DEBUG, 1, "Domain <0x%02x> Frequency <%d> Set Freq <%d> N=%d M=%d Divider <0x%02x>",
 		domain,
@@ -509,10 +508,10 @@ int saa716x_set_clk(struct saa716x_dev *saa716x,
 
 	/* Reset disable */
 	for (i = 0; i < 1000; i++) {
-		msleep(10);
+		udelay(10);
 		reset = SAA716x_EPRD(CGU, cgu_clk[domain]);
 
-		if (cgu->clk_curr_div[domain == reset])
+		if (cgu->clk_curr_div[domain] == reset)
 			break;
 	}
 
@@ -521,6 +520,7 @@ int saa716x_set_clk(struct saa716x_dev *saa716x,
 
 	return 0;
 }
+EXPORT_SYMBOL(saa716x_set_clk);
 
 int saa716x_cgu_init(struct saa716x_dev *saa716x)
 {

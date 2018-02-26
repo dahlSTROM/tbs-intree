@@ -11,7 +11,7 @@
 #include "saa716x_spi.h"
 #include "saa716x_priv.h"
 
-#if 0
+#if 0 // not needed atm
 int saa716x_spi_irqevent(struct saa716x_dev *saa716x)
 {
 	u32 stat, mask;
@@ -59,7 +59,7 @@ void saa716x_spi_write(struct saa716x_dev *saa716x, const u8 *data, int length)
 }
 EXPORT_SYMBOL_GPL(saa716x_spi_write);
 
-#if 0
+#if 0 // not needed atm
 static int saa716x_spi_status(struct saa716x_dev *saa716x, u32 *status)
 {
 	u32 stat;
@@ -263,7 +263,7 @@ static int saa716x_spi_transfer(struct spi_device *spi, struct spi_message *msg)
 	return 0;
 }
 
-int __devinit saa716x_spi_init(struct saa716x_dev *saa716x)
+int saa716x_spi_init(struct saa716x_dev *saa716x)
 {
 	struct pci_dev *pdev = saa716x->pdev;
 	struct spi_master *master;
@@ -301,7 +301,7 @@ err:
 }
 EXPORT_SYMBOL(saa716x_spi_init);
 
-void __devexit saa716x_spi_exit(struct saa716x_dev *saa716x)
+void saa716x_spi_exit(struct saa716x_dev *saa716x)
 {
 	struct saa716x_spi_state *saa716x_spi = saa716x->saa716x_spi;
 

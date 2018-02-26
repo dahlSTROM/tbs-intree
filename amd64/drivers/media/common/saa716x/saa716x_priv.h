@@ -6,15 +6,17 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/mutex.h>
+
+#include <linux/pci.h>
 #include <linux/ioport.h>
 #include <linux/i2c.h>
-
 #include "saa716x_i2c.h"
 #include "saa716x_boot.h"
 #include "saa716x_cgu.h"
 #include "saa716x_dma.h"
 #include "saa716x_fgpi.h"
 #include "saa716x_spi.h"
+#include "saa716x_vip.h"
 
 #include "dvbdev.h"
 #include "dvb_demux.h"
@@ -29,6 +31,7 @@
 
 #define SAA716x_DEV		(saa716x)->num
 #define SAA716x_VERBOSE		(saa716x)->verbose
+#define SAA716x_MAX_ADAPTERS	4
 
 #define dprintk(__x, __y, __fmt, __arg...) do {								\
 	if (__y) {											\
@@ -65,10 +68,6 @@
 #define SAA716x_EPWR(__offst, __addr, __data)	writel((__data), (saa716x->mmio + (__offst + __addr)))
 #define SAA716x_EPRD(__offst, __addr)		readl((saa716x->mmio + (__offst + __addr)))
 
-#define SAA716x_RCWR(__offst, __addr, __data)	writel((__data), (saa716x->mmio + (__offst + __addr)))
-#define SAA716x_RCRD(__offst, __addr)		readl((saa716x->mmio + (__offst + __addr)))
-
-
 #define SAA716x_MSI_MAX_VECTORS			16
 
 struct saa716x_msix_entry {
@@ -81,10 +80,9 @@ struct saa716x_dev;
 struct saa716x_adapter;
 struct saa716x_spi_config;
 
-typedef int (*saa716x_load_config_t)(struct saa716x_dev *saa716x);
-
 struct saa716x_adap_config {
 	u32				ts_port;
+	void				(*worker)(unsigned long);
 };
 
 struct saa716x_config {
@@ -93,22 +91,15 @@ struct saa716x_config {
 
 	enum saa716x_boot_mode		boot_mode;
 
-	saa716x_load_config_t		load_config;
-
 	int				adapters;
 	int				frontends;
-	u8				demodulator_addr;
-	u8				tuner_addr;
-	u8				decoder_addr;
 
 	int (*frontend_attach)(struct saa716x_adapter *adapter, int count);
 	irqreturn_t (*irq_handler)(int irq, void *dev_id);
 
-	struct saa716x_adap_config	adap_config[4];
-	enum saa716x_i2c_rate		i2c_rate[2];
-
-	int				rc_gpio_in;
-	const char			*rc_map_name;
+	struct saa716x_adap_config	adap_config[SAA716x_MAX_ADAPTERS];
+	enum saa716x_i2c_rate		i2c_rate;
+	enum saa716x_i2c_mode		i2c_mode;
 };
 
 struct saa716x_adapter {
@@ -125,8 +116,8 @@ struct saa716x_adapter {
 	u8				feeds;
 	u8				count;
 
-	struct tbsci_i2c_state		*tbsci;
-	void				*adap_priv;
+	struct i2c_client	*i2c_client_demod;
+	struct i2c_client	*i2c_client_tuner;
 };
 
 struct saa716x_dev {
@@ -152,13 +143,13 @@ struct saa716x_dev {
 
 	/* I2C */
 	struct saa716x_i2c		i2c[2];
-//	u32				i2c_rate; /* init time */
+	u32				i2c_rate; /* init time */
 	u32				I2C_DEV[2];
 
 	struct saa716x_spi_state	*saa716x_spi;
 	struct saa716x_spi_config	spi_config;
 
-	struct saa716x_adapter		saa716x_adap[4];
+	struct saa716x_adapter		saa716x_adap[SAA716x_MAX_ADAPTERS];
 	struct mutex			adap_lock;
 	struct saa716x_cgu		cgu;
 
@@ -166,27 +157,14 @@ struct saa716x_dev {
 	/* DMA */
 
 	struct saa716x_fgpi_stream_port	fgpi[4];
+	struct saa716x_vip_stream_port	vip[2];
 
 	u32				id_offst;
 	u32				id_len;
 	void				*priv;
-	
-	struct saa716x_ir		*ir;
 
-};
-
-struct saa716x_ir {
-	char			*name;
-	char			*phys;
-
-	struct rc_dev		*rc;
-
-	u32			mask_keyevent;
-
-	bool			running;
-	bool			active;
-
-	struct timer_list	timer;
+	/* remote control */
+	void				*ir_priv;
 };
 
 /* PCI */
@@ -209,5 +187,10 @@ extern void saa716x_audio_exit(struct saa716x_dev *saa716x);
 /* Boot */
 extern int saa716x_core_boot(struct saa716x_dev *saa716x);
 extern int saa716x_jetpack_init(struct saa716x_dev *saa716x);
+
+/* Remote control */
+extern int saa716x_ir_init(struct saa716x_dev *saa716x);
+extern void saa716x_ir_exit(struct saa716x_dev *saa716x);
+extern void saa716x_ir_handler(struct saa716x_dev *saa716x, u32 ir_cmd);
 
 #endif /* __SAA716x_PRIV_H */

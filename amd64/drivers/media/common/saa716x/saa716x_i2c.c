@@ -212,7 +212,7 @@ static int saa716x_i2c_hwinit(struct saa716x_i2c *i2c, u32 I2C_DEV)
 		dprintk(SAA716x_DEBUG, 1, "Initializing Adapter %s @ 400k", adapter->name);
 		SAA716x_EPWR(I2C_DEV, I2C_CLOCK_DIVISOR_HIGH, 0x1a); /* 0.5 * 27MHz/400kHz */
 		SAA716x_EPWR(I2C_DEV, I2C_CLOCK_DIVISOR_LOW,  0x21); /* 0.5 * 27MHz/400kHz */
-		SAA716x_EPWR(I2C_DEV, I2C_SDA_HOLD, 0x14);
+		SAA716x_EPWR(I2C_DEV, I2C_SDA_HOLD, 0x10);
 		break;
 
 	case SAA716x_I2C_RATE_100:
@@ -235,38 +235,32 @@ static int saa716x_i2c_hwinit(struct saa716x_i2c *i2c, u32 I2C_DEV)
 	/* Disable all interrupts and clear status */
 	SAA716x_EPWR(I2C_DEV, INT_CLR_ENABLE, 0x1fff);
 	SAA716x_EPWR(I2C_DEV, INT_CLR_STATUS, 0x1fff);
-#if 0
-	/* Enabled interrupts:
-	* Master Transaction Done (),
-	* Master Arbitration Failure,
-	* Master Transaction No Ack,
-	* I2C Error IBE
-	* Master Transaction Data Request
-	* (0xc7)
-	*/
-	msleep(5);
 
-	SAA716x_EPWR(I2C_DEV[i],
-			INT_SET_ENABLE,
-			I2C_MASTER_INTERRUPT_MTDR	| \
-			I2C_ERROR_IBE		| \
-			I2C_ENABLE_MTNA		| \
-			I2C_ENABLE_MAF		| \
-			I2C_ENABLE_MTD);
+	if (i2c->i2c_mode >= SAA716x_I2C_MODE_IRQ) {
+		/* Enabled interrupts:
+		* Master Transaction Done,
+		* Master Transaction Data Request
+		* (0x81)
+		*/
+		msleep(5);
 
-	/* Check interrupt enable status */
-	reg = SAA716x_EPRD(I2C_DEV[i], INT_ENABLE);
-	if (reg != 0xc7) {
+		SAA716x_EPWR(I2C_DEV, INT_SET_ENABLE,
+			I2C_SET_ENABLE_MTDR | I2C_SET_ENABLE_MTD);
 
-		dprintk(SAA716x_ERROR, 1,
-			"Adapter (%d) %s Interrupt enable failed, Exiting !",
-			i,
-			adapter->name);
+		/* Check interrupt enable status */
+		reg = SAA716x_EPRD(I2C_DEV, INT_ENABLE);
+		if (reg != 0x81) {
 
-		err = -EIO;
-		goto exit;
+			dprintk(SAA716x_ERROR, 1,
+				"Adapter (%d) %s Interrupt enable failed, Exiting !",
+				i,
+				adapter->name);
+
+			err = -EIO;
+			goto exit;
+		}
 	}
-#endif
+
 	/* Check status */
 	reg = SAA716x_EPRD(I2C_DEV, I2C_STATUS);
 	if (!(reg & 0xd)) {
@@ -302,6 +296,12 @@ static int saa716x_i2c_send(struct saa716x_i2c *i2c, u32 I2C_DEV, u32 data)
 	struct saa716x_dev *saa716x = i2c->saa716x;
 	int i, err = 0;
 	u32 reg;
+
+	if (i2c->i2c_mode >= SAA716x_I2C_MODE_IRQ) {
+		/* Write to FIFO */
+		SAA716x_EPWR(I2C_DEV, TX_FIFO, data);
+		return 0;
+	}
 
 	/* Check FIFO status before TX */
 	reg = SAA716x_EPRD(I2C_DEV, I2C_STATUS);
@@ -381,6 +381,172 @@ exit:
 	return err;
 }
 
+static void saa716x_i2c_irq_start(struct saa716x_i2c *i2c, u32 I2C_DEV)
+{
+	struct saa716x_dev *saa716x = i2c->saa716x;
+
+	if (i2c->i2c_mode == SAA716x_I2C_MODE_POLLING)
+		return;
+
+	i2c->i2c_op = 1;
+	SAA716x_EPWR(I2C_DEV, INT_CLR_STATUS, 0x1fff);
+}
+
+static int saa716x_i2c_irq_wait(struct saa716x_i2c *i2c, u32 I2C_DEV)
+{
+	struct saa716x_dev *saa716x = i2c->saa716x;
+	unsigned long timeout;
+	int err = 0;
+
+	if (i2c->i2c_mode == SAA716x_I2C_MODE_POLLING)
+		return 0;
+
+	timeout = HZ/100 + 1; /* 10ms */
+	timeout = wait_event_interruptible_timeout(i2c->i2c_wq, i2c->i2c_op == 0, timeout);
+	if (timeout == -ERESTARTSYS || i2c->i2c_op) {
+		SAA716x_EPWR(I2C_DEV, INT_CLR_STATUS, 0x1fff);
+		if (timeout == -ERESTARTSYS) {
+			/* a signal arrived */
+			err = -ERESTARTSYS;
+		} else {
+			dprintk(SAA716x_ERROR, 1, "timed out waiting for end of xfer!");
+			err = -EIO;
+		}
+	}
+	return err;
+}
+
+static int saa716x_i2c_write_msg(struct saa716x_i2c *i2c, u32 I2C_DEV,
+				 u16 addr, u8 *buf, u16 len, u8 add_stop)
+{
+	struct saa716x_dev *saa716x = i2c->saa716x;
+	u32 data;
+	int err;
+	int i;
+	int bytes;
+
+	saa716x_i2c_irq_start(i2c, I2C_DEV);
+
+	/* first write START with I2C address */
+	data = I2C_START_BIT | (addr << 1);
+	dprintk(SAA716x_DEBUG, 1, "length=%d Addr:0x%02x", len, data);
+	err = saa716x_i2c_send(i2c, I2C_DEV, data);
+	if (err < 0) {
+		dprintk(SAA716x_ERROR, 1, "Address write failed");
+		goto exit;
+	}
+
+	bytes = i2c->block_size - 1;
+
+	/* now write the data */
+	while (len > 0) {
+		if (bytes == i2c->block_size) {
+			/* this is not the first round, so restart irq */
+			saa716x_i2c_irq_start(i2c, I2C_DEV);
+		}
+
+		if (bytes > len)
+			bytes = len;
+
+		for (i = 0; i < bytes; i++) {
+			data = buf[i];
+			dprintk(SAA716x_DEBUG, 0, "    <W %04x> 0x%02x\n", i, data);
+			if (add_stop && i == (len - 1))
+				data |= I2C_STOP_BIT;
+			err = saa716x_i2c_send(i2c, I2C_DEV, data);
+			if (err < 0) {
+				dprintk(SAA716x_ERROR, 1, "Data send failed");
+				goto exit;
+			}
+		}
+
+		err = saa716x_i2c_irq_wait(i2c, I2C_DEV);
+		if (err < 0) {
+			goto exit;
+		}
+
+		len -= bytes;
+		buf += bytes;
+		bytes = i2c->block_size;
+	}
+
+	return 0;
+
+exit:
+	dprintk(SAA716x_ERROR, 1, "Error writing data, err=%d", err);
+	return err;
+}
+
+static int saa716x_i2c_read_msg(struct saa716x_i2c *i2c, u32 I2C_DEV,
+				u16 addr, u8 *buf, u16 len, u8 add_stop)
+{
+	struct saa716x_dev *saa716x = i2c->saa716x;
+	u32 data;
+	int err;
+	int i;
+	int bytes;
+
+	saa716x_i2c_irq_start(i2c, I2C_DEV);
+
+	/* first write START with I2C address */
+	data = I2C_START_BIT | (addr << 1) | 1;
+	dprintk(SAA716x_DEBUG, 1, "length=%d Addr:0x%02x", len, data);
+	err = saa716x_i2c_send(i2c, I2C_DEV, data);
+	if (err < 0) {
+		dprintk(SAA716x_ERROR, 1, "Address write failed");
+		goto exit;
+	}
+
+	bytes = i2c->block_size - 1;
+
+	/* now read the data */
+	while (len > 0) {
+		if (bytes == i2c->block_size) {
+			/* this is not the first round, so restart irq */
+			saa716x_i2c_irq_start(i2c, I2C_DEV);
+		}
+
+		if (bytes > len)
+			bytes = len;
+
+		for (i = 0; i < bytes; i++) {
+			data = 0x00; /* dummy write for reading */
+			if (add_stop && i == (len - 1))
+				data |= I2C_STOP_BIT;
+			err = saa716x_i2c_send(i2c, I2C_DEV, data);
+			if (err < 0) {
+				dprintk(SAA716x_ERROR, 1, "Data send failed");
+				goto exit;
+			}
+		}
+
+		err = saa716x_i2c_irq_wait(i2c, I2C_DEV);
+		if (err < 0) {
+			goto exit;
+		}
+
+		for (i = 0; i < bytes; i++) {
+			err = saa716x_i2c_recv(i2c, I2C_DEV, &data);
+			if (err < 0) {
+				dprintk(SAA716x_ERROR, 1, "Data receive failed");
+				goto exit;
+			}
+			dprintk(SAA716x_DEBUG, 0, "    <R %04x> 0x%02x\n\n", i, data);
+			buf[i] = data;
+		}
+
+		len -= bytes;
+		buf += bytes;
+		bytes = i2c->block_size;
+	}
+
+	return 0;
+
+exit:
+	dprintk(SAA716x_ERROR, 1, "Error reading data, err=%d", err);
+	return err;
+}
+
 static int saa716x_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, int num)
 {
 	struct saa716x_i2c *i2c		= i2c_get_adapdata(adapter);
@@ -389,51 +555,39 @@ static int saa716x_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, i
 	u32 DEV = SAA716x_I2C_BUS(i2c->i2c_dev);
 	int i, j, err = 0;
 	int t;
-	u32 data;
 
+	dprintk(SAA716x_DEBUG, 0, "\n");
+	dprintk(SAA716x_DEBUG, 1, "Bus(%02x) I2C transfer", DEV);
 	mutex_lock(&i2c->i2c_lock);
 
 	for (t = 0; t < 3; t++) {
 		for (i = 0; i < num; i++) {
-			/* first write START width I2C address */
-			data = (msgs[i].addr << 1) | I2C_START_BIT;
 			if (msgs[i].flags & I2C_M_RD)
-				data |= 1;
-			err = saa716x_i2c_send(i2c, DEV, data);
+				err = saa716x_i2c_read_msg(i2c, DEV,
+					msgs[i].addr, msgs[i].buf, msgs[i].len,
+					i == (num - 1));
+			else
+				err = saa716x_i2c_write_msg(i2c, DEV,
+					msgs[i].addr, msgs[i].buf, msgs[i].len,
+					i == (num - 1));
 			if (err < 0) {
-				dprintk(SAA716x_ERROR, 1, "Address write failed");
 				err = -EIO;
 				goto retry;
-			}
-			/* now read or write the data */
-			for (j = 0; j < msgs[i].len; j++) {
-				if (msgs[i].flags & I2C_M_RD)
-					data = 0x00; /* dummy write for reading */
-				else {
-					data = msgs[i].buf[j];
-				}
-				if (i == (num - 1) && j == (msgs[i].len - 1))
-					data |= I2C_STOP_BIT;
-				err = saa716x_i2c_send(i2c, DEV, data);
-				if (err < 0) {
-					dprintk(SAA716x_ERROR, 1, "Data send failed");
-					err = -EIO;
-					goto retry;
-				}
-				if (msgs[i].flags & I2C_M_RD) {
-					err = saa716x_i2c_recv(i2c, DEV, &data);
-					if (err < 0) {
-						dprintk(SAA716x_ERROR, 1, "Data receive failed");
-						err = -EIO;
-						goto retry;
-					}
-					msgs[i].buf[j] = data;
-				}
 			}
 		}
 		break;
 retry:
 		dprintk(SAA716x_INFO, 1, "Error in Transfer, try %d", t);
+		for (i = 0; i < num; i++) {
+			dprintk(SAA716x_INFO, 1, "msg %d, addr = 0x%02x, len=%d, flags=0x%x",
+				i, msgs[i].addr, msgs[i].len, msgs[i].flags);
+			if (!(msgs[i].flags & I2C_M_RD)) {
+				for (j = 0; j < msgs[i].len; j++) {
+					dprintk(SAA716x_INFO, 1, "    <W %04x> 0x%02x",
+						j, msgs[i].buf[j]);
+				}
+			}
+		}
 		err = saa716x_i2c_hwinit(i2c, DEV);
 		if (err < 0) {
 			dprintk(SAA716x_ERROR, 1, "Error Reinit");
@@ -443,10 +597,10 @@ retry:
 	}
 
 	mutex_unlock(&i2c->i2c_lock);
-	if (t == 3)
-		return -EIO;
-	else
+	if (t < 3)
 		return num;
+	else
+		return -EIO;
 
 bail_out:
 	dprintk(SAA716x_ERROR, 1, "ERROR: Bailing out <%d>", err);
@@ -463,8 +617,6 @@ static const struct i2c_algorithm saa716x_algo = {
 	.master_xfer	= saa716x_i2c_xfer,
 	.functionality	= saa716x_i2c_func,
 };
-
-#define I2C_HW_B_SAA716x		0x12
 
 struct saa716x_i2cvec {
 	u32			vector;
@@ -499,9 +651,18 @@ int saa716x_i2c_init(struct saa716x_dev *saa716x)
 
 		mutex_init(&i2c->i2c_lock);
 
+		init_waitqueue_head(&i2c->i2c_wq);
+		i2c->i2c_op = 0;
+
 		i2c->i2c_dev	= i;
-		i2c->i2c_rate	= saa716x->config->i2c_rate[i];
+		i2c->i2c_rate	= saa716x->config->i2c_rate;
+		i2c->i2c_mode	= saa716x->config->i2c_mode;
 		adapter		= &i2c->i2c_adapter;
+
+		if (i2c->i2c_mode == SAA716x_I2C_MODE_IRQ_BUFFERED)
+			i2c->block_size = 8;
+		else
+			i2c->block_size = 1;
 
 		if (adapter != NULL) {
 
@@ -511,7 +672,7 @@ int saa716x_i2c_init(struct saa716x_dev *saa716x)
 
 			adapter->owner		= THIS_MODULE;
 			adapter->algo		= &saa716x_algo;
-			adapter->algo_data 	= saa716x;
+			adapter->algo_data 	= NULL;
 			adapter->timeout	= 500; /* FIXME ! */
 			adapter->retries	= 3; /* FIXME ! */
 			adapter->dev.parent	= &pdev->dev;
@@ -532,6 +693,11 @@ int saa716x_i2c_init(struct saa716x_dev *saa716x)
 		i2c++;
 	}
 
+	if (saa716x->config->i2c_mode >= SAA716x_I2C_MODE_IRQ) {
+		SAA716x_EPWR(MSI, MSI_INT_ENA_SET_H, MSI_INT_I2CINT_0);
+		SAA716x_EPWR(MSI, MSI_INT_ENA_SET_H, MSI_INT_I2CINT_1);
+	}
+
 	dprintk(SAA716x_DEBUG, 1, "SAA%02x I2C Core succesfully initialized",
 		saa716x->pdev->device);
 
@@ -541,7 +707,7 @@ exit:
 }
 EXPORT_SYMBOL_GPL(saa716x_i2c_init);
 
-int saa716x_i2c_exit(struct saa716x_dev *saa716x)
+void saa716x_i2c_exit(struct saa716x_dev *saa716x)
 {
 	struct saa716x_i2c *i2c		= saa716x->i2c;
 	struct i2c_adapter *adapter	= NULL;
@@ -559,11 +725,7 @@ int saa716x_i2c_exit(struct saa716x_dev *saa716x)
 		dprintk(SAA716x_DEBUG, 1, "Removing adapter (%d) %s", i, adapter->name);
 
 		i2c_del_adapter(adapter);
-		dprintk(SAA716x_ERROR, 1, "Adapter (%d) %s remove", i, adapter->name);
 		i2c++;
 	}
-	dprintk(SAA716x_DEBUG, 1, "SAA%02x I2C Core succesfully removed", saa716x->pdev->device);
-
-	return 0;
 }
 EXPORT_SYMBOL_GPL(saa716x_i2c_exit);
