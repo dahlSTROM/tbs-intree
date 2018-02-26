@@ -1,4 +1,3 @@
-#include <asm/pgtable.h>
 #include <linux/kmod.h>
 #include <linux/vmalloc.h>
 #include <linux/init.h>
@@ -14,13 +13,6 @@
 #include "saa716x_priv.h"
 
 #define DRIVER_NAME				"SAA716x Core"
-
-#if 0
-static irqreturn_t saa716x_msi_handler(int irq, void *dev_id)
-{
-	return IRQ_HANDLED;
-}
-#endif
 
 static int saa716x_enable_msi(struct saa716x_dev *saa716x)
 {
@@ -56,7 +48,7 @@ static int saa716x_request_irq(struct saa716x_dev *saa716x)
 	if (saa716x->int_type == MODE_MSI) {
 		ret = request_irq(pdev->irq,
 				  config->irq_handler,
-				  IRQF_DISABLED,
+				  0,
 				  DRIVER_NAME,
 				  saa716x);
 
@@ -95,7 +87,7 @@ static void saa716x_free_irq(struct saa716x_dev *saa716x)
 int saa716x_pci_init(struct saa716x_dev *saa716x)
 {
 	struct pci_dev *pdev = saa716x->pdev;
-	int err = 0, ret = -ENODEV, i, pm_cap;
+	int err = 0, ret = -ENODEV, i, use_dac, pm_cap;
 	u32 msi_cap;
 	u8 revision;
 
@@ -109,6 +101,7 @@ int saa716x_pci_init(struct saa716x_dev *saa716x)
 	}
 
 	if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(64))) {
+		use_dac = 1;
 		err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
 		if (err) {
 			dprintk(SAA716x_ERROR, 1, "Unable to obtain 64bit DMA");
@@ -141,7 +134,8 @@ int saa716x_pci_init(struct saa716x_dev *saa716x)
 		dprintk(SAA716x_ERROR, 1, "wrong BAR0 length");
 		ret = -ENODEV;
 		goto fail2;
-}
+	}
+
 	saa716x->mmio = ioremap_nocache(pci_resource_start(pdev, 0), 0x30000);
 	if (!saa716x->mmio) {
 		dprintk(SAA716x_ERROR, 1, "Mem 0 remap failed");
