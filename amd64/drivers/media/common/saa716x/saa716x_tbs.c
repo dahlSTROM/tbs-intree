@@ -34,7 +34,6 @@
 #include "saa716x_spi.h"
 #include "saa716x_priv.h"
 
-#include "saa716x_input.h"
 #include <media/rc-core.h>
 
 #include "saa716x_tbs.h"
@@ -63,7 +62,7 @@ unsigned int ci_spd;
 module_param(ci_spd, int, 0644);
 MODULE_PARM_DESC(ci_spd, "for internal use only: default 0");
 
-static unsigned int enable_ir = 1;
+static unsigned int enable_ir = 0;
 module_param(enable_ir, int, 0644);
 MODULE_PARM_DESC(enable_ir, "Enable IR support for TBS cards: default 1");
 
@@ -138,20 +137,6 @@ static int saa716x_tbs_pci_probe(struct pci_dev *pdev, const struct pci_device_i
 		goto fail3;
 	}
 	saa716x_gpio_init(saa716x);
-
-	if (enable_ir) {
-		data = SAA716x_EPRD(MSI, MSI_CONFIG37);
-		data &= 0xFCFFFFFF;
-		data |= MSI_INT_POL_EDGE_ANY;
-		SAA716x_EPWR(MSI, MSI_CONFIG37, data);
-		SAA716x_EPWR(MSI, MSI_INT_ENA_SET_H, MSI_INT_EXTINT_4);
-
-		saa716x_gpio_set_input(saa716x, saa716x->config->rc_gpio_in);
-		msleep(1);
-	
-		saa716x_input_init(saa716x,saa716x->config->rc_gpio_in, saa716x->config->rc_map_name);
-	}
-
 	err = saa716x_dvb_init(saa716x);
 	if (err) {
 		dprintk(SAA716x_ERROR, 1, "SAA716x DVB initialization failed");
@@ -184,11 +169,6 @@ static void saa716x_tbs_pci_remove(struct pci_dev *pdev)
 			tbsci_i2c_remove(saa716x_adap);
 		}
 		saa716x_adap++;
-	}
-	
-	if (enable_ir) {
-		SAA716x_EPWR(MSI, MSI_INT_ENA_CLR_H, MSI_INT_EXTINT_4);
-		saa716x_input_fini(saa716x);
 	}
 
 	saa716x_dvb_exit(saa716x);
@@ -226,11 +206,6 @@ static irqreturn_t saa716x_tbs6680_pci_irq(int irq, void *dev_id)
 
 	if (stat_h)
 		SAA716x_EPWR(MSI, MSI_INT_STATUS_CLR_H, stat_h);
-
-	if (enable_ir) {
-		if (stat_h & MSI_INT_EXTINT_4)
-			saa716x_input_irq_handler(saa716x);
-	}
 
 	if (stat_l) {
 		if (stat_l & MSI_INT_TAGACK_FGPI_1) {
