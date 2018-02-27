@@ -72,7 +72,6 @@ static int saa716x_tbs_pci_probe(struct pci_dev *pdev, const struct pci_device_i
 {
 	struct saa716x_dev *saa716x;
 	int err = 0;
-	u32 data;
 
 	saa716x = kzalloc(sizeof (struct saa716x_dev), GFP_KERNEL);
 	if (saa716x == NULL) {
